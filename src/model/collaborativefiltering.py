@@ -199,8 +199,8 @@ def run_batch_recommendations(data, output_path: str):
 
     recommendations_df = pd.concat(all_recos, ignore_index=True)
 
-    save_processed_data(recommendations_df, output_path)
-    return recommendations_df, buyer_encoder, buyer_embeddings, faiss_index, als_model
+    #save_processed_data(recommendations_df, output_path)
+    return recommendations_df #, buyer_encoder, buyer_embeddings, faiss_index, als_model
 
 
 # ==============================================================
@@ -222,5 +222,8 @@ if __name__ == "__main__":
     cf_test = pd.read_csv("data/split/cf_test.csv")
     cf_holdout = pd.read_csv("data/split/cf_holdout.csv")
 
-    run_batch_recommendations(cf_test, output_path = "data/past_reco/cf_test_reco.xlsx")
-    run_batch_recommendations(cf_holdout, output_path = "data/past_reco/cf_holdout_would_have_reco.xlsx" )
+    cf_test_reco = run_batch_recommendations(cf_test, output_path = "data/past_reco/cf_test_reco.xlsx")
+    save_processed_data(cf_test_reco, "data/past_reco/cf_test_reco.xlsx")
+    cf_holdout_would_have_reco = run_batch_recommendations(cf_holdout, output_path = "data/past_reco/cf_holdout_would_have_reco.xlsx" )
+    save_processed_data(cf_holdout_would_have_reco, "data/past_reco/cf_holdout_would_have_reco.xlsx")
+

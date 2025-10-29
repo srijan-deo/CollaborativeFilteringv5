@@ -5,7 +5,7 @@ from datetime import datetime
 from src.data.data_ingestion import get_bq_client, ingest_dataset
 from src.data.data_preprocessing import preprocess_all
 from src.data.data_splitting import action as run_split
-from src.model.collaborativefiltering import run_batch_recommendations
+from src.model.collaborativefiltering import run_batch_recommendations, save_processed_data
 from src.model.one_to_one import refine_recommendations_parallel_per_buyer, save_processed_data as save_one_to_one_data
 from src.model.popular_logic import (
     generate_final_recommendations,
@@ -39,7 +39,7 @@ def main():
     ]
     for name, query_path, output_path in tasks:
         print(f"   Ingesting: {name}")
-        #ingest_dataset(client, query_path, output_path)
+        ingest_dataset(client, query_path, output_path)
     log_time(step, start)
 
     # ───────────────────────────────────────────────────────────────
@@ -64,8 +64,27 @@ def main():
     step = "STEP 4️⃣: ALS + FAISS Recommendations"
     print(f"\n{step}")
     start = time.time()
-    run_batch_recommendations(test_cf, output_path="data/past_reco/cf_test_reco.xlsx")
-    run_batch_recommendations(holdout_cf, output_path="data/past_reco/cf_holdout_would_have_reco.xlsx")
+    test_cf = pd.read_csv("data/split/cf_test.csv")
+    holdout_cf = pd.read_csv("data/split/cf_holdout.csv")
+
+    cf_test_reco = run_batch_recommendations(test_cf, output_path="data/past_reco/cf_test_reco.xlsx")
+    save_processed_data(cf_test_reco, "data/past_reco/cf_test_reco.xlsx")
+
+    cf_holdout_would_have_reco = run_batch_recommendations(holdout_cf, output_path="data/past_reco/cf_holdout_would_have_reco.xlsx")
+    save_processed_data(cf_holdout_would_have_reco, "data/past_reco/cf_holdout_would_have_reco.xlsx")
+
+    upload_to_bigquery(
+        dataframe=cf_test_reco,
+        table_id="member_reco.test_past_reco",
+        project_id="cprtqa-strategicanalytics-sp1",
+        credentials_path="/Users/srdeo/OneDrive - Copart, Inc/cprtqa-strategicanalytics-sp1-8b7a00c4fbae.json"
+    )
+    upload_to_bigquery(
+        dataframe=cf_holdout_would_have_reco,
+        table_id="member_reco.test_past_reco",
+        project_id="cprtqa-strategicanalytics-sp1",
+        credentials_path="/Users/srdeo/OneDrive - Copart, Inc/cprtqa-strategicanalytics-sp1-8b7a00c4fbae.json"
+    )
     log_time(step, start)
 
     # ───────────────────────────────────────────────────────────────
