@@ -84,7 +84,7 @@ def clean_popular_lots(popular_df: pd.DataFrame) -> pd.DataFrame:
         popular_df['buyer_type'] = popular_df['buyer_type'].fillna(mode_val[0])
 
     # Fill grp_model using make-level mode
-    popular_df = popular_df.groupby('lot_make_cd', group_keys=False).apply(_fill_grp_model_make)
+    popular_df = popular_df.groupby('grp_model', group_keys=False).apply(_fill_grp_model_make)
 
     # Replace acv with plug_lot_acv where acv is 0 or negative
     popular_df['median_acv'] = popular_df['median_acv'].mask(popular_df['median_acv']<=0, popular_df['median_plug_lot_acv'])

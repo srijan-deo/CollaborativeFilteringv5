@@ -17,7 +17,10 @@ from sklearn.preprocessing import LabelEncoder
 from implicit.als import AlternatingLeastSquares
 from tqdm import tqdm
 import os
-
+from google.cloud import bigquery
+import datetime
+from datetime import datetime, timedelta
+import pytz
 
 # ==============================================================
 # 1️⃣ Encoder & Matrix Builders
@@ -163,7 +166,7 @@ def recommend_lots_cosine_from_similar_buyers(input_buyer_id, data, buyer_encode
 # 5️⃣ Batch Runner
 # ==============================================================
 
-def run_batch_recommendations(data, output_path: str):
+def run_batch_recommendations(data):
 
     print("\nBuilding encoders and sparse matrix...")
     buyer_encoder, lot_encoder, buyer_ids, lot_ids = build_encoders(data)
@@ -200,8 +203,31 @@ def run_batch_recommendations(data, output_path: str):
     recommendations_df = pd.concat(all_recos, ignore_index=True)
 
     #save_processed_data(recommendations_df, output_path)
-    return recommendations_df #, buyer_encoder, buyer_embeddings, faiss_index, als_model
+    return recommendations_df #buyer_encoder, buyer_embeddings, faiss_index, als_model
 
+def upload_to_bigquery(dataframe, table_id, project_id, credentials_path):
+
+    print(f"\n📤 Uploading data to BigQuery table `{table_id}`...")
+
+    # Initialize BigQuery client
+    client = bigquery.Client.from_service_account_json(credentials_path)
+
+    # Define job configuration (append mode + schema autodetect)
+    job_config = bigquery.LoadJobConfig(
+        write_disposition="WRITE_APPEND",
+        autodetect=True
+    )
+
+    # Start upload job
+    job = client.load_table_from_dataframe(
+        dataframe,
+        destination=f"{project_id}.{table_id}",
+        job_config=job_config
+    )
+
+    job.result()  # Wait for load to complete
+
+    print(f"✅ Data successfully appended to `{table_id}` in project `{project_id}`.")
 
 # ==============================================================
 # 6️⃣ Save to Excel Helper (Always Excel)
@@ -215,6 +241,47 @@ def save_processed_data(df: pd.DataFrame, output_path: str):
     print(f"\n✅ Saved processed data to {output_path} ({len(df):,} rows)")
 
 
+# =================
+# 7: For BQ Push
+# ================
+
+def format_and_concat_two_groups(df1, df2, group1="test", group2="would_have", identifier=1):
+    def format_one(df, group_label):
+        df = df.copy()
+        df['identifier'] = identifier
+        df['group'] = group_label
+        df = df[['identifier', 'group', 'input_buyer_nbr', 'recommended_lot']]
+        df['rank'] = df.groupby('input_buyer_nbr').cumcount() + 1
+        pivoted = df.pivot(index=['identifier', 'group', 'input_buyer_nbr'],
+                           columns='rank',
+                           values='recommended_lot').reset_index()
+        pivoted.columns = [
+            f'lot_{int(col)}' if isinstance(col, int) else col
+            for col in pivoted.columns
+        ]
+        lot_cols = [f'lot_{i}' for i in range(1, 7)]
+        for col in lot_cols:
+            if col not in pivoted.columns:
+                pivoted[col] = 0
+        pivoted = pivoted[['identifier', 'group', 'input_buyer_nbr'] + lot_cols]
+        pivoted[lot_cols] = pivoted[lot_cols].fillna(0).astype(int)
+        return pivoted
+
+    df1_formatted = format_one(df1, group1)
+    df2_formatted = format_one(df2, group2)
+
+    combined = pd.concat([df1_formatted, df2_formatted], ignore_index=True)
+
+    cst = pytz.timezone('US/Central')
+
+    now_cst = datetime.now(cst)
+    next_day_7am_cst = (now_cst + timedelta(days=1)).replace(hour=7, minute=0, second=0, microsecond=0)
+
+    combined['created_at'] = now_cst
+    combined['sent_at'] = next_day_7am_cst
+    return combined
+
+
 # ==============================================================
 # 6️⃣ Entry Point
 # ==============================================================
@@ -222,8 +289,18 @@ if __name__ == "__main__":
     cf_test = pd.read_csv("data/split/cf_test.csv")
     cf_holdout = pd.read_csv("data/split/cf_holdout.csv")
 
-    cf_test_reco = run_batch_recommendations(cf_test, output_path = "data/past_reco/cf_test_reco.xlsx")
+    cf_test_reco = run_batch_recommendations(cf_test)
     save_processed_data(cf_test_reco, "data/past_reco/cf_test_reco.xlsx")
-    cf_holdout_would_have_reco = run_batch_recommendations(cf_holdout, output_path = "data/past_reco/cf_holdout_would_have_reco.xlsx" )
+
+    cf_holdout_would_have_reco = run_batch_recommendations(cf_holdout)
     save_processed_data(cf_holdout_would_have_reco, "data/past_reco/cf_holdout_would_have_reco.xlsx")
 
+    combined_cf = format_and_concat_two_groups(df1=cf_test_reco, df2=cf_holdout_would_have_reco, group1="test",
+                                               group2="would_have", identifier=1)
+
+    upload_to_bigquery(
+        dataframe=combined_cf,
+        table_id="member_reco.test_past_reco",
+        project_id="cprtqa-strategicanalytics-sp1",
+        credentials_path="/Users/srdeo/OneDrive - Copart, Inc/secrets/cprtqa-strategicanalytics-sp1-8b7a00c4fbae.json"
+    )

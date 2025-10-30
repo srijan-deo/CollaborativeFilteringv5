@@ -53,6 +53,7 @@ def rename_tag_concat_and_pivot(
 
     # ✅ Create a separate copy for nonactive_holdout_would_have
     nonactive_holdout_would_have = nonactive_holdout_reco.copy(deep=True)
+    #nonactive_holdout_would_have.to_excel('../data/results/nonactive_holdout_would_have_reco.xlsx')
 
     # --- Add identifier and group columns ---
     mapping = [
@@ -200,6 +201,7 @@ if __name__ == "__main__":
 
     cf_holdout_would_have = pd.read_excel('../../data/results/cf_holdout_would_have_reco.xlsx')
     one_to_one_holdout_would_have = pd.read_excel('../../data/results/onetoone_holdout_would_have_reco.xlsx')
+
     final_pivoted_recos = rename_tag_concat_and_pivot(cf_test_reco, one_to_one_test_reco, nonactive_test_reco, cf_holdout_reco,
                                 one_to_one_holdout_reco, nonactive_holdout_reco, cf_holdout_would_have,
                                 one_to_one_holdout_would_have)
